@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Time Clock · Purrfect Hokkaido</title>
+<title>Purrfect Hokkaido Admin</title>
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#122565">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<meta name="apple-mobile-web-app-title" content="PH Time Clock">
+<meta name="apple-mobile-web-app-title" content="Purrfect Hokkaido Admin">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -103,7 +103,7 @@ button.mine{grid-column:1/-1;height:50px;background:#fff;color:var(--navy);borde
   <section class="ot" id="ot" hidden aria-live="polite"></section>
   <section class="hist" id="hist" hidden aria-live="polite"></section>
   <p class="foot">The time saved is the system time (Manila), not your phone's. Your PIN is personal: never share it.</p>
-  <button type="button" class="getapp" id="getapp" hidden><img src="icons/icon-192.png" alt="" width="28" height="28">Install the Time Clock app</button>
+  <button type="button" class="getapp" id="getapp" hidden><img src="icons/icon-192.png" alt="" width="28" height="28">Install the Admin app</button>
 </main>
 <div class="appnote" id="appnote" hidden role="dialog"><p id="appnote-text"></p><button type="button" id="appnote-ok">OK</button></div>
 <script>
@@ -224,7 +224,7 @@ if ('serviceWorker' in navigator) addEventListener('load', () => navigator.servi
   let ask = null;
   const say = html => { $('#appnote-text').innerHTML = html; note.hidden = false; };
   addEventListener('beforeinstallprompt', e => { e.preventDefault(); ask = e; btn.hidden = false; });
-  addEventListener('appinstalled', () => { btn.hidden = true; say('Installed! Open <b>PH Time Clock</b> from the home screen.'); });
+  addEventListener('appinstalled', () => { btn.hidden = true; say('Installed! Open <b>Purrfect Hokkaido Admin</b> from the home screen.'); });
   if (ios || inApp) btn.hidden = false;
   btn.addEventListener('click', async () => {
     if (ask) { ask.prompt(); const c = await ask.userChoice; ask = null; if (c.outcome === 'accepted') btn.hidden = true; }
