@@ -64,6 +64,16 @@ button.mine{grid-column:1/-1;height:50px;background:#fff;color:var(--navy);borde
 .hb{display:flex;gap:10px;margin-top:14px}
 .hb button{flex:1;height:46px;font-size:16px;background:#fff;color:var(--navy);border:2px solid var(--navy)}
 .hb button.close{background:var(--navy);color:#fff}
+.ot{margin-top:14px;background:var(--card);border-radius:18px;padding:16px;border:3px solid var(--orange)}
+.ot h2{font-size:20px;color:var(--orange)}
+.ot .sub{font-size:14px;color:#555;margin-top:2px}
+.oti{margin-top:12px;border-top:1px solid #e3e6ee;padding-top:10px}
+.oti .who{display:flex;justify-content:space-between;font-weight:700;color:var(--navy);font-size:16px}
+.oti .x{font-size:13.5px;color:#555;margin-top:2px}
+.oti .ab{display:flex;gap:8px;margin-top:8px}
+.oti .ab button{flex:1;height:44px;font-size:16px}
+.oti .yes{background:var(--green)} .oti .no{background:#fff;color:#a12;border:2px solid #a12}
+.okmsg{margin-top:10px;font-weight:600;color:#2f6b0f;font-size:15px}
 .getapp{display:flex;align-items:center;justify-content:center;gap:8px;margin:14px auto 0;height:44px;padding:0 18px 0 8px;border:2px solid var(--navy);border-radius:99px;background:#fff;color:var(--navy);font:600 16px/1 Fredoka,system-ui,sans-serif;width:auto}
 .getapp img{border-radius:8px}
 .appnote{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));max-width:420px;margin:0 auto;background:var(--navy);color:#fff;border-radius:16px;padding:16px;font-size:16px;line-height:1.35;box-shadow:0 8px 28px rgba(0,0,0,.3)}
@@ -90,6 +100,7 @@ button.mine{grid-column:1/-1;height:50px;background:#fff;color:var(--navy);borde
     </div>
   </form>
   <div class="msg" id="msg" hidden></div>
+  <section class="ot" id="ot" hidden aria-live="polite"></section>
   <section class="hist" id="hist" hidden aria-live="polite"></section>
   <p class="foot">The time saved is the system time (Manila), not your phone's. Your PIN is personal: never share it.</p>
   <button type="button" class="getapp" id="getapp" hidden><img src="icons/icon-192.png" alt="" width="28" height="28">Install the Time Clock app</button>
@@ -134,12 +145,32 @@ $('#branch').addEventListener('change', () => store.set('ph-clock-branch', $('#b
 // held in memory only while it is open, for the Previous cutoff button.
 let me = null, histTimer = null;
 const hm = min => { min = Math.round(min || 0); const h = Math.floor(min / 60), m = min % 60; return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`; };
-function closeHist() { $('#hist').hidden = true; $('#hist').innerHTML = ''; me = null; clearTimeout(histTimer); }
+function closeHist() { $('#hist').hidden = true; $('#hist').innerHTML = ''; $('#ot').hidden = true; $('#ot').innerHTML = ''; me = null; clearTimeout(histTimer); }
+// Managers (Vince) get the overtime waiting for approval with every tap / My hours, and approve or reject it here.
+function showOT(list, msg) {
+  const items = list.map(o => `<div class="oti"><div class="who"><span>${esc(o.name)}</span><span>OT ${hm(o.over)}</span></div>
+    <p class="x">${esc(o.date)} · in ${esc(o.tin)} · out ${esc(o.tout)} · ${esc(o.shift)}</p>
+    <div class="ab"><button type="button" class="yes" data-k="${esc(o.key)}" data-d="Approve">Approve</button><button type="button" class="no" data-k="${esc(o.key)}" data-d="Reject">Reject</button></div></div>`).join('');
+  $('#ot').innerHTML = `<h2>Overtime to approve (${list.length})</h2><p class="sub">Only approved overtime is paid (125%).</p>
+    ${msg ? `<p class="okmsg">${esc(msg)}</p>` : ''}${items || '<p class="x" style="margin-top:10px">Nothing waiting. All overtime is decided.</p>'}`;
+  $('#ot').hidden = false;
+  clearTimeout(histTimer); histTimer = setTimeout(closeHist, 90000);
+}
+$('#ot').addEventListener('click', async ev => {
+  const b = ev.target.closest('button[data-k]');
+  if (!b || !me) return;
+  $('#ot').querySelectorAll('button').forEach(x => x.disabled = true);
+  try {
+    const r = await (await fetch(DATA.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ clock: 1, name: me.name, pin: me.pin, action: b.dataset.d, key: b.dataset.k }) })).json();
+    if (r.ok) showOT(r.pending || [], r.decided); else { show(esc(r.error || 'Could not save.')); $('#ot').querySelectorAll('button').forEach(x => x.disabled = false); }
+  } catch (e) { show("Couldn't save. Check the internet."); $('#ot').querySelectorAll('button').forEach(x => x.disabled = false); }
+});
 function showHist(h, name) {
   const t = h.totals || {};
   const rows = (h.days || []).map(d => `<div class="day"><div class="d"><span>${esc(d.date)}</span><span>${d.hours ? d.hours.toFixed(2) + ' h' : ''}</span></div>
     <div class="t"><span><i>In</i>${esc(d.tin || '–')}</span><span><i>Break out</i>${esc(d.bout || '–')}</span><span><i>Break in</i>${esc(d.bin || '–')}</span><span><i>Out</i>${esc(d.tout || '–')}</span></div>
-    <p class="x">${esc(d.branch || '')}${d.late ? ' · late ' + hm(d.late) : ''}${d.over ? ' · OT ' + hm(d.over) + (d.otOk ? ' <span class="tagok">approved</span>' : ' <span class="tagwait">awaiting approval</span>') : ''}${!d.tout && d.tin ? ' · <span class="tagwait">no time out yet</span>' : ''}</p></div>`).join('');
+    <p class="x">${esc(d.shift || '')}${d.branch ? ' · ' + esc(d.branch) : ''}${d.late ? ' · late ' + hm(d.late) : ''}${d.over ? ' · OT ' + hm(d.over) + (d.otOk ? ' <span class="tagok">approved</span>' : /^Rejected/.test(d.otBy || '') ? ' <span class="tagwait">rejected</span>' : ' <span class="tagwait">awaiting Vince’s approval</span>') : ''}${!d.tout && d.tin ? ' · <span class="tagwait">no time out yet</span>' : ''}</p></div>`).join('');
   $('#hist').innerHTML = `<div class="hh"><h2>${esc(name.split(' ')[0])}'s hours</h2><span class="per">${esc(h.label)}</span></div>
     <div class="tot"><div><b>${t.days || 0}</b><span>days worked</span></div><div><b>${(t.hours || 0).toFixed(2)}</b><span>hours worked</span></div>
     <div class="ok"><b>${hm(t.otOk)}</b><span>approved OT</span></div><div class="wait"><b>${hm(t.otPending)}</b><span>OT awaiting approval</span></div></div>
@@ -174,6 +205,7 @@ document.querySelectorAll('.btns button').forEach(btn => btn.addEventListener('c
     if (r.ok) {
       if (!r.view) show(`<b>${esc(r.message)}</b>${esc(r.action)} · ${esc(r.date)}<span class="t">${esc(r.time)}</span>${r.note ? esc(r.note) : ''}`, true);
       if (r.history) { me = { name, pin }; showHist(r.history, name); }
+      if (Array.isArray(r.pending)) { me = { name, pin }; showOT(r.pending); }
       $('#pin').value = ''; $('#name').value = '';
     } else show(esc(r.error || 'Something went wrong. Try again.'));
   } catch (e) {
