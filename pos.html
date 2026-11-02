@@ -81,6 +81,15 @@ button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
 .pays .btn{height:60px;font-size:14px}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .note{font-size:13px;color:var(--muted)}
+.day{display:flex;justify-content:space-between;gap:8px;font-weight:500;font-size:14px;color:var(--green-d);padding:10px 2px 4px;border-bottom:2px solid #E8F5E9;position:sticky;top:-16px;background:#fff}
+.day span:last-child{color:var(--muted);font-weight:400;font-variant-numeric:tabular-nums}
+.rrow{display:grid;grid-template-columns:auto 1fr auto;gap:2px 12px;align-items:center;width:100%;text-align:left;padding:10px 2px;border-bottom:1px solid var(--line)}
+.rrow:active{background:#f5f5f5}
+.rrow .tm{color:var(--muted);font-variant-numeric:tabular-nums;min-width:62px}
+.rrow .no{font-weight:500}.rrow .no small{display:block;font-weight:400;color:var(--muted);font-size:12px}
+.rrow .amt{font-weight:500;font-variant-numeric:tabular-nums}
+.rlist{display:grid}
+.rprev{font:12px/1.35 'Roboto Mono',monospace;white-space:pre-wrap;background:#FAFAFA;border:1px solid var(--line);border-radius:4px;padding:10px;overflow:auto;max-height:50vh}
 .warn{color:var(--red);font-size:14px}
 .toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#323232;color:#fff;padding:12px 18px;border-radius:4px;z-index:20;font-size:14px;max-width:calc(100% - 32px)}
 .mobile-bar{display:none}
@@ -108,6 +117,7 @@ button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
     <div class="bar">
       <img src="img/cat-mark.webp" alt="">
       <h1>Purrfect Hokkaido · Sale</h1>
+      <button class="ib" id="rcptBtn" aria-label="Receipts, last 30 days"><svg viewBox="0 0 24 24"><path d="M18 17H6v-2h12zm0-4H6v-2h12zm0-4H6V7h12zM3 22l1.5-1.5L6 22l1.5-1.5L9 22l1.5-1.5L12 22l1.5-1.5L15 22l1.5-1.5L18 22l1.5-1.5L21 22V2l-1.5 1.5L18 2l-1.5 1.5L15 2l-1.5 1.5L12 2l-1.5 1.5L9 2 7.5 3.5 6 2 4.5 3.5 3 2z"/></svg></button>
       <button class="ib" id="setBtn" aria-label="Settings"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3h-4l-.4 2.7a7.6 7.6 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.6 7.6 0 0 0 1.7 1L11 21h4l.4-2.7a7.6 7.6 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5A3.5 3.5 0 1 1 13 8.5a3.5 3.5 0 0 1 0 7z"/></svg></button>
     </div>
     <div class="tools">
@@ -317,6 +327,30 @@ $('#chargeBtn').onclick = () => {
   });
 };
 
+// ---- receipt history (this device, last 30 days) ---------------------------------------------------------
+const HIST = 'pos-history', KEEP_DAYS = 30;
+const pack = s => ({no: s.no, at: new Date(s.at).toISOString(), type: s.type, tendered: s.tendered, sub: s.sub, disc: s.disc, total: s.total,
+  change: s.change, qty: s.qty, cashier: s.cashier || '', senior: s.senior && s.senior.id ? s.senior : undefined,
+  lines: s.lines.map(l => [l.name, l.price, l.qty, l.disc ? 1 : 0])});
+const unpack = h => ({...h, at: new Date(h.at), senior: h.senior || {id: '', name: ''}, lines: h.lines.map(([name, price, qty, disc]) => ({name, price, qty, disc: !!disc}))});
+function loadHistory() {
+  let h = [];
+  try { h = JSON.parse(store.get(HIST) || '[]'); } catch (e) { h = []; }
+  const cutoff = Date.now() - KEEP_DAYS * 864e5;
+  return h.filter(x => Date.parse(x.at) >= cutoff);
+}
+function saveHistory(sale) {
+  let h = loadHistory(); h.push(pack(sale));
+  for (let i = 0; i < 6; i++) {
+    try { localStorage.setItem(HIST, JSON.stringify(h)); return; }
+    catch (e) { h = h.slice(Math.ceil(h.length * 0.2)); }   // storage full: drop the oldest fifth and retry
+  }
+}
+(() => {   // one-time move of the old single "last receipt" into the history
+  const old = store.get('pos-last');
+  if (old) { try { const s = JSON.parse(old); if (!loadHistory().some(x => x.no === s.no)) saveHistory(s); } catch (e) {} try { localStorage.removeItem('pos-last'); } catch (e) {} }
+})();
+
 function nextNo() {
   const d = new Date(Date.now() + 8 * 3600e3).toISOString().slice(2, 10).replace(/-/g, '');
   const key = 'pos-seq-' + d, n = Number(store.get(key) || 0) + 1; store.set(key, String(n));
@@ -327,7 +361,7 @@ function done(type, tendered) {
   const t = totals();
   const sale = {no: nextNo(), at: new Date(), type, tendered, change: r2(tendered - t.total), ...t,
                 lines: ticket.map(l => ({...l, name: tidy(byId[l.id].name), price: byId[l.id].price})), senior: {...senior}, cashier: settings.cashier};
-  store.set('pos-last', JSON.stringify(sale));
+  saveHistory(sale);
   if (settings.autoprint) printSale(sale);
   sheet('Sale complete', (bd, close, x) => {
     x.textContent = 'New sale';
@@ -434,6 +468,52 @@ async function printSale(s) {
   browserPrint(s);
 }
 
+// ---- past receipts ----------------------------------------------------------------------------------
+const dayKey = d => new Date(d).toLocaleDateString('en-CA', {timeZone: 'Asia/Manila'});
+const dayLabel = k => new Date(k + 'T12:00:00+08:00').toLocaleDateString('en-PH', {timeZone: 'Asia/Manila', weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'});
+const timeLabel = d => new Date(d).toLocaleTimeString('en-PH', {timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit'});
+const payLabel = t => t === 'QR Payments' ? 'GCash / QR' : t;
+
+function showReceipts() {
+  sheet('Receipts · last 30 days', (bd) => {
+    const h = loadHistory().reverse();
+    const q = el('input', {type: 'search', placeholder: 'Find a receipt number, item or amount', autocomplete: 'off'});
+    const list = el('div', {className: 'rlist'});
+    const draw = () => {
+      const term = q.value.trim().toLowerCase();
+      const rows = h.filter(x => !term || [x.no, x.total, payLabel(x.type), ...x.lines.map(l => l[0])].join(' ').toLowerCase().includes(term));
+      list.replaceChildren();
+      if (!rows.length) { list.append(el('p', {className: 'none', textContent: h.length ? 'No receipts match.' : 'No receipts on this device yet. Receipts are kept here for 30 days.'})); return; }
+      const groups = new Map();
+      for (const x of rows) { const k = dayKey(x.at); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(x); }
+      for (const [k, xs] of groups) {
+        const tot = xs.reduce((a, x) => a + x.total, 0);
+        list.append(el('div', {className: 'day'}, [el('span', {textContent: dayLabel(k)}), el('span', {textContent: xs.length + (xs.length === 1 ? ' receipt · ' : ' receipts · ') + peso(tot)})]));
+        for (const x of xs) {
+          const b = el('button', {className: 'rrow'}, [
+            el('span', {className: 'tm', textContent: timeLabel(x.at)}),
+            el('span', {className: 'no'}, ['#' + x.no, el('small', {textContent: payLabel(x.type) + ' · ' + x.qty + (x.qty === 1 ? ' item' : ' items') + (x.disc ? ' · Sr/PWD' : '')})]),
+            el('span', {className: 'amt', textContent: peso(x.total)})]);
+          b.onclick = () => showOne(unpack(x));
+          list.append(b);
+        }
+      }
+    };
+    q.oninput = draw; draw();
+    bd.append(el('p', {className: 'note', textContent: 'Receipts printed on this device, newest first. Tap one to see it and print a copy.'}), q, list);
+  });
+}
+
+function showOne(sale) {
+  const w = settings.paper === '32' ? 32 : 42;
+  sheet('Receipt #' + sale.no, (bd, close) => {
+    const pr = el('button', {className: 'btn g', textContent: 'Reprint'}), back = el('button', {className: 'btn o', textContent: 'Back'});
+    pr.onclick = () => printSale(sale); back.onclick = close;
+    bd.append(el('div', {className: 'rprev', textContent: receiptText(sale, w).map(l => l.replace('@@TOTAL@@', '')).join('\n')}), el('div', {className: 'row2'}, [back, pr]));
+  });
+}
+$('#rcptBtn').onclick = showReceipts;
+
 // ---- settings ---------------------------------------------------------------------------------------
 $('#setBtn').onclick = () => sheet('Settings', (bd, close) => {
   const paper = el('select', {}, [new Option('80 mm', '48'), new Option('58 mm', '32')]); paper.value = settings.paper;
@@ -441,9 +521,9 @@ $('#setBtn').onclick = () => sheet('Settings', (bd, close) => {
   const cp = el('select', {}, [new Option('1 copy', '1'), new Option('2 copies', '2')]); cp.value = String(settings.copies);
   const ca = el('input', {value: settings.cashier, placeholder: 'Name on receipts (optional)'});
   const ap = el('input', {type: 'checkbox', checked: settings.autoprint});
-  const last = el('button', {className: 'btn o', textContent: 'Reprint last receipt'});
+  const last = el('button', {className: 'btn o', textContent: 'Past receipts'});
   const save = el('button', {className: 'btn g', textContent: 'Save'});
-  last.onclick = () => { const s = store.get('pos-last'); if (s) printSale(JSON.parse(s)); else toast('No receipt yet on this device'); };
+  last.onclick = () => { close(); showReceipts(); };
   save.onclick = () => {
     Object.assign(settings, {paper: paper.value, printer: pr.value, copies: Number(cp.value), cashier: ca.value.trim(), autoprint: ap.checked});
     store.set('pos-paper', settings.paper); store.set('pos-printer', settings.printer); store.set('pos-copies', String(settings.copies));
